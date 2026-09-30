@@ -170,5 +170,6 @@
     "module.zoot.description": "Remove todos os maus efeitos de poções/fogo.",
     "module.keepSprint.description": "UNTRANSLATED: Keeps you sprinting after attacking.",
     "module.disabler.description": "UNTRANSLATED: Disables either a server or a specific anticheat detection."
+    "module.performance.description": "Reduces local rendering overhead by suppressing selected particle and visual effects.",
   }
 }
