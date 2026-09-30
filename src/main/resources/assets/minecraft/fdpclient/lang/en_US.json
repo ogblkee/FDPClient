@@ -454,5 +454,5 @@
     "module.betterChat.description": "Adds timestamps, regex filters, and duplicate stacking to incoming chat.",
     "module.hideAppearance.description": "Temporarily hides client HUD and menus for streaming or panic use.",
     "module.debugOverlay.description": "Shows live movement, rotation, network, and server diagnostics."
-    "module.performance.description": "Reduces local rendering overhead by suppressing selected particle and visual effects.",
+    "module.performance.description": "Reduces local rendering overhead by suppressing selected particle and visual effects."
 }
