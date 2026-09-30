@@ -320,5 +320,5 @@
     "module.hitFX.description": "Создаёт нативные эффекты частиц на цели, которую вы бьёте.",
     "module.easyPearl.description": "Помогает прицелить брошенный вручную эндер-жемчуг туда, куда вы смотрите.",
     "module.debugRecorder.description": "Записывает данные прицеливания, боя и кликов по тикам в JSON-файл для офлайн-анализа."
-    "module.performance.description": "Reduces local rendering overhead by suppressing selected particle and visual effects.",
+    "module.performance.description": "Reduces local rendering overhead by suppressing selected particle and visual effects."
 }
