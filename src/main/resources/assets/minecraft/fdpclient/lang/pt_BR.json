@@ -335,4 +335,5 @@
     "module.betterChat.description": "Adiciona horario, filtros regex e agrupamento de mensagens repetidas.",
     "module.hideAppearance.description": "Oculta temporariamente o HUD e menus do cliente para stream ou emergencia.",
     "module.debugOverlay.description": "Mostra diagnosticos de movimento, rotacao, rede e servidor em tempo real."
+    "module.performance.description": "Melhora desempenho..",
 }
