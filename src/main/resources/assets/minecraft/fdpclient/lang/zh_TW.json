@@ -371,5 +371,7 @@
     "module.rotationRecorder.description": "記錄並保存您的旋轉。",
 
     "module.forwardTrack.description": "顯示實體的實際位置。"
+    
+    "module.performance.description": "Reduces local rendering overhead by suppressing selected particle and visual effects."
   }
 }
