@@ -506,6 +506,20 @@ private val polarRandomStrafe by boolean("Polar-RandomStrafe", true) { mode == "
             return@handler
         }
 
+        if (mode == "Polar2" && polarPendingJump) {
+        val shouldJump = thePlayer.ticksExisted >= polarTargetTick
+
+        if (shouldJump && (!polarOnlyGround || thePlayer.onGround)) {
+            thePlayer.jump()
+
+            if (polarRandomStrafe) {
+                MovementUtils.strafe(0.18f)
+            }
+
+            polarPendingJump = false
+        }
+    }
+        
         when (mode.lowercase()) {
             "tick" -> {
                 if (velocityInput) {
@@ -698,13 +712,6 @@ private val polarRandomStrafe by boolean("Polar-RandomStrafe", true) { mode == "
 
                 if (velocityInput && (thePlayer.hurtTime < 5 || thePlayer.onGround) && velocityTimer.hasTimePassed(120L)) {
                     velocityInput = false
-                }
-            }
-
-            "polar" -> {
-                if (thePlayer.hurtTime == 9) {
-                    thePlayer.motionX *= 0.6
-                    thePlayer.motionZ *= 0.6
                 }
             }
 
