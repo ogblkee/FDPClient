@@ -817,24 +817,6 @@ private val polarRandomStrafe by boolean("Polar-RandomStrafe", true) { mode == "
                 }
             }
 
-            if (mode == "Polar2" && polarPendingJump) {
-    val shouldJump = thePlayer.ticksExisted >= polarTargetTick
-
-    if (shouldJump) {
-        if (polarOnlyGround && !thePlayer.onGround) {
-            // espera
-        } else {
-            thePlayer.jump()
-
-            if (polarRandomStrafe) {
-                MovementUtils.strafe(0.18f)
-            }
-
-            polarPendingJump = false
-        }
-    }
-}
-
             "grimdamage" -> {
                 if (thePlayer.hurtTime == 9) {
                     val target = CombatManager.target?.takeIf { !it.isDead && thePlayer.getDistanceToEntityBox(it) <= 3f }
@@ -1375,7 +1357,7 @@ private val polarRandomStrafe by boolean("Polar-RandomStrafe", true) { mode == "
                     }
                 }
 
-    "Polar2" -> {
+    "polar2" -> {
     if (packet is S12PacketEntityVelocity && packet.entityID == thePlayer.entityId) {
         if (polarOnlyCombat && !CombatManager.inCombatState) return@handler
 
