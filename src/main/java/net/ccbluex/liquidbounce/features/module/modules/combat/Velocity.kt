@@ -60,7 +60,7 @@ private val VELOCITY_MODES = arrayOf(
     "IntaveReduce", "Intave", "Delay", "Delayed", "Grim", "GrimC03", "Grim1.17", "GrimC07", "GrimDamage",
     "Hypixel", "HypixelAir", "HypixelBoost",
     "Click", "BlocksMC", "GrimVertical", "AttackReduce", "Spoof", "Tick", "AAC4Reduce", "AAC5Reduce",
-    "AAC5.2.0", "AAC5.2.0Combat", "Cancel", "Minemen", "Phase", "SideStrafe", "Polar", "Sentinel"
+    "AAC5.2.0", "AAC5.2.0Combat", "Cancel", "Minemen", "Phase", "SideStrafe", "Polar", "Polar2" "Sentinel"
 )
 
 /**
@@ -267,6 +267,27 @@ object Velocity : Module("Velocity", Category.COMBAT, Category.SubCategory.COMBA
     private val via by boolean("Via", true) { mode == "GrimVertical" && (grimVerticalMode == "Vertical" || grimVerticalMode == "Reduce") }
         .describe("Send the attack before the swing animation.")
 
+    // Polar (Jump Reset randomizado)
+private val polarChance by int("Polar-Chance", 75, 0..100) { mode == "Polar" }
+    .describe("Chance de aplicar o jump reset após receber knockback.")
+
+private val polarMinDelay by int("Polar-MinDelay", 2, 1..10) { mode == "Polar" }
+    .describe("Delay mínimo em ticks antes de pular.")
+
+private val polarMaxDelay by int("Polar-MaxDelay", 5, 1..10) { mode == "Polar" }
+    .describe("Delay máximo em ticks antes de pular.")
+
+private val polarEarlyChance by int("Polar-EarlyChance", 25, 0..100) { mode == "Polar" }
+    .describe("Chance de pular 'cedo' (quebra o padrão de sempre pular tarde).")
+
+private val polarOnlyGround by boolean("Polar-OnlyGround", true) { mode == "Polar" }
+    .describe("Só pula se estiver no chão (evita pulo no ar).")
+
+private val polarOnlyCombat by boolean("Polar-OnlyCombat", false) { mode == "Polar" }
+    .describe("Só aplica se estiver em combate.")
+
+private val polarRandomStrafe by boolean("Polar-RandomStrafe", true) { mode == "Polar" }
+    .describe("Aplica strafe aleatório no tick do pulo para variar o padrão de movimento.")
 
     //0.00075 is added silently
 
@@ -384,6 +405,12 @@ object Velocity : Module("Velocity", Category.COMBAT, Category.SubCategory.COMBA
     private var lastProfileFingerprint = ""
     private var lastModeWarning = ""
 
+    // Polar2
+    private var polarPendingJump = false
+    private var polarJumpTick = 0
+    private var polarTargetTick = 0
+    private var polarStrafeYaw = 0f
+    
     // Vulcan
     private var transaction = false
 
@@ -425,6 +452,10 @@ object Velocity : Module("Velocity", Category.COMBAT, Category.SubCategory.COMBA
             mc.timer.timerSpeed = 1f
             wasTimer = false
         }
+        polarPendingJump = false
+        polarJumpTick = 0
+        polarTargetTick = 0
+        polarStrafeYaw = 0f
         timerTicks = 0
         canCancel = false
         canSpoof = false
@@ -778,6 +809,24 @@ object Velocity : Module("Velocity", Category.COMBAT, Category.SubCategory.COMBA
                     hasReceivedVelocity = false
                 }
             }
+
+            if (mode == "Polar2" && polarPendingJump) {
+    val shouldJump = thePlayer.ticksExisted >= polarTargetTick
+
+    if (shouldJump) {
+        if (polarOnlyGround && !thePlayer.onGround) {
+            // espera
+        } else {
+            thePlayer.jump()
+
+            if (polarRandomStrafe) {
+                MovementUtils.strafe(0.18f)
+            }
+
+            polarPendingJump = false
+        }
+    }
+}
 
             "grimdamage" -> {
                 if (thePlayer.hurtTime == 9) {
@@ -1318,6 +1367,34 @@ object Velocity : Module("Velocity", Category.COMBAT, Category.SubCategory.COMBA
                         hasReceivedVelocity = factor < 0.999
                     }
                 }
+
+    "polar2" -> {
+    if (packet is S12PacketEntityVelocity && packet.entityID == thePlayer.entityId) {
+        if (polarOnlyCombat && !CombatManager.inCombatState) return@handler
+
+        if (nextInt(endExclusive = 100) < polarChance) {
+            polarPendingJump = true
+
+            val minD = polarMinDelay.coerceAtMost(polarMaxDelay)
+            val maxD = polarMaxDelay.coerceAtLeast(polarMinDelay)
+            val baseDelay = nextInt(minD, maxD + 1)
+
+            val delay = if (nextInt(endExclusive = 100) < polarEarlyChance) {
+                (baseDelay - 1).coerceAtLeast(1)
+            } else {
+                baseDelay
+            }
+
+            polarTargetTick = thePlayer.ticksExisted + delay
+
+            polarStrafeYaw = if (polarRandomStrafe) {
+                thePlayer.rotationYaw + (-45f..45f).random()
+            } else {
+                thePlayer.rotationYaw
+            }
+        }
+    }
+}
 
                 "grim1.17" -> {
                     if (packet is S12PacketEntityVelocity && packet.entityID == thePlayer.entityId) {
