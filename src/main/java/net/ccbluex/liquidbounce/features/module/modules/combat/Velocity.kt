@@ -60,7 +60,7 @@ private val VELOCITY_MODES = arrayOf(
     "IntaveReduce", "Intave", "Delay", "Delayed", "Grim", "GrimC03", "Grim1.17", "GrimC07", "GrimDamage",
     "Hypixel", "HypixelAir", "HypixelBoost",
     "Click", "BlocksMC", "GrimVertical", "AttackReduce", "Spoof", "Tick", "AAC4Reduce", "AAC5Reduce",
-    "AAC5.2.0", "AAC5.2.0Combat", "Cancel", "Minemen", "Phase", "SideStrafe", "Polar", "Polar2" "Sentinel"
+    "AAC5.2.0", "AAC5.2.0Combat", "Cancel", "Minemen", "Phase", "SideStrafe", "Polar", "Polar2", "Sentinel"
 )
 
 /**
@@ -268,25 +268,25 @@ object Velocity : Module("Velocity", Category.COMBAT, Category.SubCategory.COMBA
         .describe("Send the attack before the swing animation.")
 
     // Polar (Jump Reset randomizado)
-private val polarChance by int("Polar-Chance", 75, 0..100) { mode == "Polar" }
+private val polarChance by int("Polar-Chance", 75, 0..100) { mode == "Polar2" }
     .describe("Chance de aplicar o jump reset após receber knockback.")
 
-private val polarMinDelay by int("Polar-MinDelay", 2, 1..10) { mode == "Polar" }
+private val polarMinDelay by int("Polar-MinDelay", 2, 1..10) { mode == "Polar2" }
     .describe("Delay mínimo em ticks antes de pular.")
 
-private val polarMaxDelay by int("Polar-MaxDelay", 5, 1..10) { mode == "Polar" }
+private val polarMaxDelay by int("Polar-MaxDelay", 5, 1..10) { mode == "Polar2" }
     .describe("Delay máximo em ticks antes de pular.")
 
-private val polarEarlyChance by int("Polar-EarlyChance", 25, 0..100) { mode == "Polar" }
+private val polarEarlyChance by int("Polar-EarlyChance", 25, 0..100) { mode == "Polar2" }
     .describe("Chance de pular 'cedo' (quebra o padrão de sempre pular tarde).")
 
-private val polarOnlyGround by boolean("Polar-OnlyGround", true) { mode == "Polar" }
+private val polarOnlyGround by boolean("Polar-OnlyGround", true) { mode == "Polar2" }
     .describe("Só pula se estiver no chão (evita pulo no ar).")
 
-private val polarOnlyCombat by boolean("Polar-OnlyCombat", false) { mode == "Polar" }
+private val polarOnlyCombat by boolean("Polar-OnlyCombat", false) { mode == "Polar2" }
     .describe("Só aplica se estiver em combate.")
 
-private val polarRandomStrafe by boolean("Polar-RandomStrafe", true) { mode == "Polar" }
+private val polarRandomStrafe by boolean("Polar-RandomStrafe", true) { mode == "Polar2" }
     .describe("Aplica strafe aleatório no tick do pulo para variar o padrão de movimento.")
 
     //0.00075 is added silently
@@ -1368,7 +1368,7 @@ private val polarRandomStrafe by boolean("Polar-RandomStrafe", true) { mode == "
                     }
                 }
 
-    "polar2" -> {
+    "Polar2" -> {
     if (packet is S12PacketEntityVelocity && packet.entityID == thePlayer.entityId) {
         if (polarOnlyCombat && !CombatManager.inCombatState) return@handler
 
