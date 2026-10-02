@@ -78,4 +78,6 @@ object Performance : Module("Performance", Category.CLIENT, Category.SubCategory
         EnumParticleTypes.DRIP_LAVA -> dripParticles.get()
         else -> false
     }
+    fun shouldBlockBreakingParticles(): Boolean =
+        state && (allParticles.get() || blockBreakParticles.get())
 }
