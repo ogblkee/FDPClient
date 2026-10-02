@@ -1216,7 +1216,7 @@ private fun updateHittable() {
             return
         }
         
-        hittable = false
+              hittable = false
 
         // Strict: the raytrace is the final word — only attack when the ray actually lands on the
         // target. Skip the lenient through-walls/intercept fallback below. Normal keeps that fallback.
@@ -1225,7 +1225,7 @@ private fun updateHittable() {
         }
     } else {
         hittable = isRotationFaced(target, range.toDouble(), rotation)
-        
+
         if (!hittable && predictEnemyPosition > 0) {
             val rayEnd = Vec3(
                 eyes.xCoord + lookVec.xCoord * range.toDouble(),
@@ -1235,7 +1235,6 @@ private fun updateHittable() {
             val intercept = targetBox.calculateIntercept(eyes, rayEnd)
             hittable = intercept != null
         }
-    }
     }
     
     var specialTrackingApplied = false
