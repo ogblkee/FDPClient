@@ -1225,11 +1225,6 @@ private fun updateHittable() {
             return
         }
 
-
-        if (raytraceMode == "Strict") {
-        return
-    }
-
     if (raytraceMode == "Lenient") {
         hittable = isRotationFaced(target, range.toDouble(), rotation)
 
