@@ -287,7 +287,7 @@ object KillAura : Module("KillAura", Category.COMBAT, Category.SubCategory.COMBA
     ) { raycastValue.isActive() && options.rotationsActive }
     private val livingRaycast by boolean("LivingRayCast", true) { raycastValue.isActive() && options.rotationsActive }
         .describe("Only count living entities for the raycast.")
-    private val raytraceMode by choices("Raytrace", arrayOf("Normal", "Strict", "Lenient"), "Normal") { raycastValue.isActive() && options.rotationsActive }
+    private val raytraceMode by choices("Raytrace", arrayOf("Normal", "Strict"), "Normal") { raycastValue.isActive() && options.rotationsActive }
         .describe("How strictly the raycast must land on the target.")
 
     // Hit delay
@@ -667,11 +667,11 @@ object KillAura : Module("KillAura", Category.COMBAT, Category.SubCategory.COMBA
             // Sometimes you also do not click. The positives outweigh the negatives, however.
             val extraClicks = if (simulateDoubleClicking && !simulateCooldown) nextInt(-1, 1) else 0
 
-            // Generate clicks based on distance from us to target.
+                      // Generate clicks based on distance from us to target.
             val generatedClicks = if (generateClicksBasedOnDist) {
-    val distance = player.getDistanceToEntityBox(target!!)
-    maxOf(1, ((distance / distanceFactor.random()) * cpsMultiplier.random()).roundToInt())
-} else 0
+                val distance = player.getDistanceToEntityBox(target!!)
+                ((distance / distanceFactor.random()) * cpsMultiplier.random()).roundToInt()
+            } else 0
 
             var maxClicks = clicks + extraClicks + generatedClicks
 
@@ -679,10 +679,9 @@ object KillAura : Module("KillAura", Category.COMBAT, Category.SubCategory.COMBA
 
             updateHittable()
 
-            if (!prevHittable && hittable && forceFirstHit) {
-    maxClicks = maxOf(maxClicks, 1)
-}
-
+                        if (!prevHittable && hittable && maxClicks == 0 && forceFirstHit) {
+                maxClicks++
+            }
             repeat(maxClicks) {
                 val wasBlocking = blockStatus
 
@@ -1223,19 +1222,6 @@ private fun updateHittable() {
         // target. Skip the lenient through-walls/intercept fallback below. Normal keeps that fallback.
         if (raytraceMode == "Strict") {
             return
-        }
-
-    if (raytraceMode == "Lenient") {
-        hittable = isRotationFaced(target, range.toDouble(), rotation)
-
-        if (!hittable && predictEnemyPosition > 0) {
-            val rayEnd = Vec3(
-                eyes.xCoord + lookVec.xCoord * range.toDouble(),
-                eyes.yCoord + lookVec.yCoord * range.toDouble(),
-                eyes.zCoord + lookVec.zCoord * range.toDouble()
-            )
-            val intercept = targetBox.calculateIntercept(eyes, rayEnd)
-            hittable = intercept != null
         }
     } else {
         hittable = isRotationFaced(target, range.toDouble(), rotation)
