@@ -49,4 +49,6 @@ public abstract class MixinEffectRenderer {
         } catch(final ConcurrentModificationException ignored) {
         }
     }
+    fun shouldBlockBreakingParticles(): Boolean =
+        state && (allParticles.get() || blockBreakParticles.get())
 }
