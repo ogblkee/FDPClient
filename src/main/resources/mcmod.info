@@ -1,13 +1,13 @@
 [
   {
     "modid": "fdpclient",
-    "name": "FDPClient",
+    "name": "BlakeClient",
     "description": "A free mixin-based injection hacked-client",
-    "version": "${version}",
+    "version": "v3.0.0",
     "mcversion": "1.8.9",
     "url": "https://fdpinfo.github.io",
     "updateUrl": "",
-    "authorList": ["Zywl"],
+    "authorList": ["Blake"],
     "credits": "",
     "logoFile": "",
     "screenshots": [],
