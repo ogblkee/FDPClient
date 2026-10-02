@@ -1250,6 +1250,7 @@ private fun updateHittable() {
             hittable = intercept != null
         }
     }
+    }
     
     var specialTrackingApplied = false
     
