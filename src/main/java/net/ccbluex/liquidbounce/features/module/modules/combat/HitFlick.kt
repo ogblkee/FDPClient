@@ -11,6 +11,7 @@ import net.ccbluex.liquidbounce.event.PacketEvent
 import net.ccbluex.liquidbounce.event.handler
 import net.ccbluex.liquidbounce.features.module.Category
 import net.ccbluex.liquidbounce.features.module.Module
+import net.ccbluex.liquidbounce.utils.client.rotation
 import net.ccbluex.liquidbounce.utils.kotlin.RandomUtils.nextInt
 import net.ccbluex.liquidbounce.utils.rotation.Rotation
 import net.ccbluex.liquidbounce.utils.rotation.RotationPriority
@@ -39,7 +40,10 @@ object HitFlick : Module("HitFlick", Category.COMBAT, Category.SubCategory.COMBA
 
     private val rotationSettings = RotationSettings(this)
         .withoutKeepRotation()
-        .withRequestPriority(RotationPriority.CRITICAL)
+        .withRequestPriority(RotationPriority.HIGH)
+        .apply {
+            values.forEach { it.excludeWithState() }
+        }
 
     private var flickPending = false
 
@@ -54,6 +58,8 @@ object HitFlick : Module("HitFlick", Category.COMBAT, Category.SubCategory.COMBA
         val packet = event.packet
 
         if (packet !is C02PacketUseEntity) return@handler
+
+        if (KillAura.blockStatus) return@handler
 
         if (onlyOnKillAura && !KillAura.state) return@handler
         if (nextInt(endExclusive = 100) >= chance) return@handler
