@@ -27,34 +27,29 @@ import net.minecraft.util.MovingObjectPosition
 import net.minecraft.util.Vec3
 import org.lwjgl.input.Keyboard
 
-object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
+object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCELLANEOUS, Keyboard.KEY_NONE) {
 
-    // ─── Modo ───
     private val mode by choices("Mode", arrayOf("Legit", "Auto"), "Legit")
         .describe("Legit: mina o bloco que você está olhando. Auto: procura o bloco mais próximo.")
 
-    // ─── Alcance ───
-    private val range by float("Range", 4.5f, 1f..6f)
-        .describe("Alcance máximo para procurar blocos (apenas modo Auto).")
+    private val range by float("Range", 4.5f, 1f..6f) { mode == "Auto" }
+        .describe("Alcance máximo para procurar blocos.")
 
     private val throughWalls by boolean("ThroughWalls", false) { mode == "Auto" }
-        .describe("Permite minerar blocos atrás de paredes (arriscado).")
+        .describe("Permite minerar blocos atrás de paredes.")
 
-    // ─── Rotação ───
     private val rotate by boolean("Rotate", true)
         .describe("Envia rotações silenciosas para mirar no bloco automaticamente.")
 
     private val onlyOnGround by boolean("OnlyOnGround", false)
         .describe("Só minera quando estiver no chão.")
 
-    // ─── Filtros ───
     private val blacklistValue = choices(
         "Blacklist",
         arrayOf("Default", "OnlyOres", "None"),
         "Default"
-    ).describe("Quais blocos NÃO minerar. Default: blocos comuns perigosos. OnlyOres: só minérios.")
+    ).describe("Quais blocos NÃO minerar.")
 
-    // ─── Estado ───
     private var currentBlock: BlockPos? = null
     private var currentFacing: EnumFacing? = null
     private var lastRotation: Rotation? = null
@@ -92,13 +87,11 @@ object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
             return@handler
         }
 
-        // Se for um bloco novo, começa a minerar
         if (currentBlock != target.position) {
             resetMining()
             startMining(target.position, target.facing)
         }
 
-        // Rotação silenciosa (aponta pro bloco no servidor sem mexer na câmera)
         if (rotate) {
             val rotation = rotationToBlock(target.position, target.facing)
             if (rotation != null && rotation != lastRotation) {
@@ -111,15 +104,9 @@ object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
             }
         }
 
-        // Continua a mineração do bloco atual
         mineBlock(target.position, target.facing)
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Procura de blocos
-    // ─────────────────────────────────────────────────────────────
-
-    /** Modo Legit: usa o raio do Minecraft (objectMouseOver) pra achar o bloco que o jogador está olhando. */
     private fun findLookingAt(): BlockTarget? {
         val mop = mc.objectMouseOver ?: return null
         if (mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) return null
@@ -131,7 +118,6 @@ object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
         return BlockTarget(pos, mop.sideHit ?: EnumFacing.UP)
     }
 
-    /** Modo Auto: procura o bloco válido mais próximo dentro do range. */
     private fun findClosest(): BlockTarget? {
         val player = mc.thePlayer ?: return null
         val world = mc.theWorld ?: return null
@@ -154,7 +140,6 @@ object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
                     val dist = eyes.distanceTo(center).toFloat()
                     if (dist > bestDist) continue
 
-                    // Verifica visibilidade (se não for throughWalls, precisa estar visível)
                     if (!throughWalls && !RotationUtils.isVisible(center)) continue
 
                     val facing = closestFacing(pos, eyes)
@@ -166,10 +151,6 @@ object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
         return best
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Mineração
-    // ─────────────────────────────────────────────────────────────
-
     private fun startMining(pos: BlockPos, facing: EnumFacing) {
         mc.netHandler.addToSendQueue(C07PacketPlayerDigging(START_DESTROY_BLOCK, pos, facing))
         mc.playerController?.onPlayerDamageBlock(pos, facing)
@@ -180,7 +161,6 @@ object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
     private fun mineBlock(pos: BlockPos, facing: EnumFacing) {
         val controller = mc.playerController ?: return
         if (controller.onPlayerDamageBlock(pos, facing)) {
-            // Bloco quebrado — envia pacote de parada
             mc.netHandler.addToSendQueue(C07PacketPlayerDigging(STOP_DESTROY_BLOCK, pos, facing))
             currentBlock = null
             currentFacing = null
@@ -198,10 +178,6 @@ object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
         currentFacing = null
         lastRotation = null
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────
 
     private fun isValid(state: IBlockState): Boolean {
         val block = state.block ?: return false
@@ -254,7 +230,6 @@ object AutoMine : Module("AutoMine", Category.OTHER, Keyboard.KEY_NONE) {
     private fun rotationToBlock(pos: BlockPos, facing: EnumFacing): Rotation? {
         val player = mc.thePlayer ?: return null
         val blockCenter = Vec3(pos).addVector(0.5, 0.5, 0.5)
-        // Mira na face do bloco que está voltada pro jogador
         val faceOffset = Vec3(
             facing.directionVec.x * 0.5,
             facing.directionVec.y * 0.5,
