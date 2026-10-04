@@ -12,12 +12,12 @@ import net.ccbluex.liquidbounce.features.module.Category
 import net.ccbluex.liquidbounce.features.module.Module
 import net.ccbluex.liquidbounce.utils.extensions.*
 import net.ccbluex.liquidbounce.utils.kotlin.RandomUtils.nextInt
-import net.ccbluex.liquidbounce.utils.rotation.PostRotationExecutor
 import net.ccbluex.liquidbounce.utils.rotation.Rotation
 import net.ccbluex.liquidbounce.utils.rotation.RotationPriority
 import net.ccbluex.liquidbounce.utils.rotation.RotationSettings
 import net.ccbluex.liquidbounce.utils.rotation.RotationUtils
 import net.ccbluex.liquidbounce.utils.rotation.RotationUtils.currentRotation
+import net.ccbluex.liquidbounce.utils.timing.TickedActions.nextTick
 import net.minecraft.entity.EntityLivingBase
 import org.lwjgl.input.Keyboard
 
@@ -30,8 +30,6 @@ object HitFlick : Module("HitFlick", Category.COMBAT, Category.SubCategory.COMBA
     private val chance by int("Chance", 100, 0..100, "%")
     private val onlyOnKillAura by boolean("OnlyOnKillAura", true)
 
-    // ResetTicks = 1: a lease do HitFlick se libera sozinha no próximo tick,
-    // sem precisar de cancelTargetRotation no callback (que causava reentrância).
     private val rotationSettings = RotationSettings(this)
         .withoutKeepRotation()
         .withRequestPriority(RotationPriority.HIGH)
@@ -60,32 +58,42 @@ object HitFlick : Module("HitFlick", Category.COMBAT, Category.SubCategory.COMBA
             RotationUtils.setTargetRotation(
                 rotation = Rotation(targetYaw, targetPitch),
                 options = rotationSettings,
-                ticks = 1,   // libera a lease em 1 tick
+                ticks = 1,
             )
         }.getOrDefault(false)
 
         if (!success) return@handler
 
+        // Cancela o ataque original do KillAura.
         event.cancelEvent()
 
         val targetId = target.entityId
+        val yaw = targetYaw
+        val pitch = targetPitch
 
-        PostRotationExecutor.runPostMove {
-            // Re-valida tudo: o mundo pode ter mudado entre o hit e o callback.
-            val livePlayer = mc.thePlayer ?: return@runPostMove
-            val world = mc.theWorld ?: return@runPostMove
-            val liveTarget = world.getEntityByID(targetId) as? EntityLivingBase ?: return@runPostMove
-            if (!liveTarget.isEntityAlive) return@runPostMove
+        // FIX DE CRASH:
+        // Não atacar dentro do callback do PostRotationExecutor — ele roda na
+        // thread de rede (Netty), e chamar attackEntityWithModifiedSprint dali
+        // corrompe o estado do mundo e trava o jogo (sem gerar crash report).
+        //
+        // Em vez disso, agendamos o ataque pra rodar na thread principal no
+        // próximo tick, via TickedActions.nextTick.
+        nextTick {
+            val livePlayer = mc.thePlayer ?: return@nextTick
+            val world = mc.theWorld ?: return@nextTick
+            val liveTarget = world.getEntityByID(targetId) as? EntityLivingBase ?: return@nextTick
+            if (!liveTarget.isEntityAlive) return@nextTick
 
             runCatching {
+                // Re-aplica a rotação do flick pra garantir que o C02PacketUseEntity
+                // saia com o yaw correto.
                 RotationUtils.setTargetRotation(
-                    rotation = Rotation(targetYaw, targetPitch),
+                    rotation = Rotation(yaw, pitch),
                     options = rotationSettings,
                     ticks = 1,
                 )
                 livePlayer.attackEntityWithModifiedSprint(liveTarget, false) {}
             }
-            // NÃO chama cancelTargetRotation aqui. A lease expira sozinha em 1 tick.
         }
     }
 }
