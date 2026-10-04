@@ -79,7 +79,8 @@ object FDPClient {
      *
      * This has all of the basic information.
      */
-    const val CLIENT_NAME = "Blake Client"
+    const val CLIENT_NAME = "blakeclient"
+    const val CLIENT_DISPLAY_NAME = "BlakeClient"
     const val CLIENT_AUTHOR = "Blake"
     const val CLIENT_CLOUD = "https://cloud.liquidbounce.net/LiquidBounce"
     const val CLIENT_WEBSITE = "fdpinfo.github.io"
