@@ -18,52 +18,35 @@ import net.ccbluex.liquidbounce.utils.rotation.RotationPriority
 import net.ccbluex.liquidbounce.utils.rotation.RotationSettings
 import net.ccbluex.liquidbounce.utils.rotation.RotationUtils
 import net.ccbluex.liquidbounce.utils.rotation.RotationUtils.currentRotation
+import net.minecraft.entity.EntityLivingBase
 import org.lwjgl.input.Keyboard
 
 object HitFlick : Module("HitFlick", Category.COMBAT, Category.SubCategory.COMBAT_RAGE, Keyboard.KEY_NONE) {
 
     private val flickAngle by int("Angle", 90, 0..180)
-        .describe("Ângulo do flick (em graus). 90 = empurra pro lado, 180 = empurra pra trás.")
-
+        .describe("Ângulo do flick em graus. 90 = empurra pro lado, 180 = empurra pra trás.")
     private val randomizeOffset by boolean("RandomizeOffset", false)
-        .describe("Adiciona variação aleatória ao ângulo do flick.")
-
     private val angleOffset by int("AngleOffset", 10, 0..45) { randomizeOffset }
-        .describe("Variação máxima do ângulo (±).")
-
     private val chance by int("Chance", 100, 0..100, "%")
-        .describe("Chance de aplicar o flick em cada hit.")
-
     private val onlyOnKillAura by boolean("OnlyOnKillAura", true)
-        .describe("Só aplica o flick quando o KillAura está ativo.")
 
+    // ResetTicks = 1: a lease do HitFlick se libera sozinha no próximo tick,
+    // sem precisar de cancelTargetRotation no callback (que causava reentrância).
     private val rotationSettings = RotationSettings(this)
         .withoutKeepRotation()
-        .withRequestPriority(RotationPriority.CRITICAL)
+        .withRequestPriority(RotationPriority.HIGH)
 
     override fun onDisable() {
-        RotationUtils.cancelTargetRotation(rotationSettings, immediate = true)
+        runCatching { RotationUtils.cancelTargetRotation(rotationSettings, immediate = true) }
     }
 
-    /**
-     * Intercepta o AttackEvent do KillAura.
-     *
-     * Em vez de deixar o KillAura atacar com a rotação normal, o HitFlick:
-     * 1. Cancela o ataque original
-     * 2. Agenda um ataque post-move (depois da rotação do flick ser enviada)
-     * 3. Aplica a rotação do flick
-     *
-     * Quando o C03PacketPlayer com a rotação do flick for enviado,
-     * o PostRotationExecutor dispara o ataque. O servidor recebe a rotação
-     * do flick ANTES do C02PacketUseEntity, e calcula o knockback com base nela.
-     */
     val onAttack = handler<AttackEvent>(priority = -1) { event ->
         if (!state) return@handler
-
-        val target = event.targetEntity ?: return@handler
-        if (target !is net.minecraft.entity.EntityLivingBase) return@handler
-
         if (onlyOnKillAura && !KillAura.state) return@handler
+
+        val target = event.targetEntity
+        if (target !is EntityLivingBase) return@handler
+        if (!target.isEntityAlive) return@handler
         if (nextInt(endExclusive = 100) >= chance) return@handler
 
         val player = mc.thePlayer ?: return@handler
@@ -71,30 +54,38 @@ object HitFlick : Module("HitFlick", Category.COMBAT, Category.SubCategory.COMBA
         val baseRotation = currentRotation ?: player.rotation
         val offset = if (randomizeOffset) nextInt(-angleOffset, angleOffset + 1) else 0
         val targetYaw = baseRotation.yaw + flickAngle + offset
+        val targetPitch = baseRotation.pitch
 
-        // Aplica a rotação do flick
-        val success = RotationUtils.setTargetRotation(
-            rotation = Rotation(targetYaw, baseRotation.pitch),
-            options = rotationSettings,
-        )
+        val success = runCatching {
+            RotationUtils.setTargetRotation(
+                rotation = Rotation(targetYaw, targetPitch),
+                options = rotationSettings,
+                ticks = 1,   // libera a lease em 1 tick
+            )
+        }.getOrDefault(false)
 
         if (!success) return@handler
 
-        // Cancela o ataque original e agenda um post-move
         event.cancelEvent()
 
+        val targetId = target.entityId
+
         PostRotationExecutor.runPostMove {
-            // Re-aplica a rotação (caso o PostRotationExecutor tenha resetado)
-            RotationUtils.setTargetRotation(
-                rotation = Rotation(targetYaw, baseRotation.pitch),
-                options = rotationSettings,
-            )
+            // Re-valida tudo: o mundo pode ter mudado entre o hit e o callback.
+            val livePlayer = mc.thePlayer ?: return@runPostMove
+            val world = mc.theWorld ?: return@runPostMove
+            val liveTarget = world.getEntityByID(targetId) as? EntityLivingBase ?: return@runPostMove
+            if (!liveTarget.isEntityAlive) return@runPostMove
 
-            // Ataca com a rotação do flick
-            player.attackEntityWithModifiedSprint(target, false) {}
-
-            // Cancela a rotação depois do ataque
-            RotationUtils.cancelTargetRotation(rotationSettings)
+            runCatching {
+                RotationUtils.setTargetRotation(
+                    rotation = Rotation(targetYaw, targetPitch),
+                    options = rotationSettings,
+                    ticks = 1,
+                )
+                livePlayer.attackEntityWithModifiedSprint(liveTarget, false) {}
+            }
+            // NÃO chama cancelTargetRotation aqui. A lease expira sozinha em 1 tick.
         }
     }
 }
