@@ -3,6 +3,8 @@
  * A free open source mixin-based injection hacked client for Minecraft using Minecraft Forge.
  * https://github.com/SkidderMC/FDPClient/
  */
+@file:Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements", "TooManyFunctions")
+
 package net.ccbluex.liquidbounce.features.module.modules.other
 
 import net.ccbluex.liquidbounce.config.*
@@ -44,7 +46,8 @@ object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCEL
     private val onlyOnGround by boolean("OnlyOnGround", false)
         .describe("Só minera quando estiver no chão.")
 
-    private val blacklistValue = choices(
+    // CORRIGIDO: 'by' faltava. choices() retorna ListValue, o 'by' faz virar String.
+    private val blacklist by choices(
         "Blacklist",
         arrayOf("Default", "OnlyOres", "None"),
         "Default"
@@ -132,23 +135,29 @@ object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCEL
         for (x in -r..r) {
             for (y in -r..r) {
                 for (z in -r..r) {
-                    val pos = origin.add(x, y, z)
-                    val state = world.getBlockState(pos) ?: continue
-                    if (!isValid(state)) continue
-
-                    val center = Vec3(pos).addVector(0.5, 0.5, 0.5)
-                    val dist = eyes.distanceTo(center).toFloat()
-                    if (dist > bestDist) continue
-
-                    if (!throughWalls && !RotationUtils.isVisible(center)) continue
-
-                    val facing = closestFacing(pos, eyes)
-                    bestDist = dist
-                    best = BlockTarget(pos, facing)
+                    val result = evaluateBlock(origin.add(x, y, z), eyes, bestDist) ?: continue
+                    bestDist = result.second
+                    best = result.first
                 }
             }
         }
         return best
+    }
+
+    /** Retorna o par (bloco, distância) se for melhor que o atual, senão null. */
+    private fun evaluateBlock(pos: BlockPos, eyes: Vec3, bestDist: Float): Pair<BlockTarget, Float>? {
+        val world = mc.theWorld ?: return null
+        val state = world.getBlockState(pos) ?: return null
+        if (!isValid(state)) return null
+
+        val center = Vec3(pos).addVector(0.5, 0.5, 0.5)
+        val dist = eyes.distanceTo(center).toFloat()
+        if (dist > bestDist) return null
+
+        if (!throughWalls && !RotationUtils.isVisible(center)) return null
+
+        val facing = closestFacing(pos, eyes)
+        return BlockTarget(pos, facing) to dist
     }
 
     private fun startMining(pos: BlockPos, facing: EnumFacing) {
@@ -181,20 +190,22 @@ object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCEL
 
     private fun isValid(state: IBlockState): Boolean {
         val block = state.block ?: return false
-        return when (blacklistValue) {
+        return when (blacklist) {
             "OnlyOres" -> isOre(block)
-            "None" -> block != Blocks.air && !block.isLiquid
+            "None" -> !isUnbreakable(block)
             else -> !isDefaultBlacklisted(block)
         }
     }
 
-    private fun isDefaultBlacklisted(block: Block): Boolean {
+    /** Blocos que nunca dão pra minerar de qualquer forma (ar, líquidos, bedrock). */
+    private fun isUnbreakable(block: Block): Boolean {
         return block == Blocks.air
             || block == Blocks.bedrock
-            || block == Blocks.water
-            || block == Blocks.flowing_water
-            || block == Blocks.lava
-            || block == Blocks.flowing_lava
+            || block.material?.isLiquid == true
+    }
+
+    private fun isDefaultBlacklisted(block: Block): Boolean {
+        return isUnbreakable(block)
             || block == Blocks.chest
             || block == Blocks.trapped_chest
             || block == Blocks.ender_chest
