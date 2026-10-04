@@ -13,57 +13,56 @@ import net.ccbluex.liquidbounce.event.handler
 import net.ccbluex.liquidbounce.features.module.Category
 import net.ccbluex.liquidbounce.features.module.Module
 import net.ccbluex.liquidbounce.utils.extensions.*
-import net.ccbluex.liquidbounce.utils.rotation.Rotation
-import net.ccbluex.liquidbounce.utils.rotation.RotationPriority
-import net.ccbluex.liquidbounce.utils.rotation.RotationSettings
 import net.ccbluex.liquidbounce.utils.rotation.RotationUtils
 import net.minecraft.block.Block
-import net.minecraft.block.state.IBlockState
+import net.minecraft.client.entity.EntityPlayerSP
 import net.minecraft.init.Blocks
 import net.minecraft.network.play.client.C07PacketPlayerDigging
 import net.minecraft.network.play.client.C07PacketPlayerDigging.Action.START_DESTROY_BLOCK
 import net.minecraft.network.play.client.C07PacketPlayerDigging.Action.STOP_DESTROY_BLOCK
 import net.minecraft.util.BlockPos
 import net.minecraft.util.EnumFacing
-import net.minecraft.util.MovingObjectPosition
 import net.minecraft.util.Vec3
+import net.minecraft.world.World
 import org.lwjgl.input.Keyboard
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
 object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCELLANEOUS, Keyboard.KEY_NONE) {
 
-    private val mode by choices("Mode", arrayOf("Legit", "Auto"), "Legit")
-        .describe("Legit: mina o bloco que você está olhando. Auto: procura o bloco mais próximo.")
+    private val scanRange by int("ScanRange", 24, 8..64)
+        .describe("Raio de busca por minérios.")
 
-    private val range by float("Range", 4.5f, 1f..6f) { mode == "Auto" }
-        .describe("Alcance máximo para procurar blocos.")
+    private val breakRange by float("BreakRange", 4.2f, 1f..6f)
+        .describe("Alcance para quebrar o minério.")
 
-    private val throughWalls by boolean("ThroughWalls", false) { mode == "Auto" }
-        .describe("Permite minerar blocos atrás de paredes.")
+    private val targetType by choices(
+        "Target",
+        arrayOf("Lapis", "Diamond", "Iron", "Gold", "Emerald", "Coal", "Redstone", "All"),
+        "Lapis"
+    ).describe("Qual minério minerar.")
 
-    private val rotate by boolean("Rotate", true)
-        .describe("Envia rotações silenciosas para mirar no bloco automaticamente.")
+    private val breakInPath by boolean("BreakInPath", true)
+        .describe("Quebra blocos que estiverem no caminho até o minério.")
 
-    private val onlyOnGround by boolean("OnlyOnGround", false)
-        .describe("Só minera quando estiver no chão.")
+    private val stuckJump by boolean("StuckJump", true)
+        .describe("Pula automaticamente quando ficar preso.")
 
-    // CORRIGIDO: 'by' faltava. choices() retorna ListValue, o 'by' faz virar String.
-    private val blacklist by choices(
-        "Blacklist",
-        arrayOf("Default", "OnlyOres", "None"),
-        "Default"
-    ).describe("Quais blocos NÃO minerar.")
+    private var target: BlockPos? = null
+    private var miningBlock: BlockPos? = null
+    private var miningFacing: EnumFacing? = null
 
-    private var currentBlock: BlockPos? = null
-    private var currentFacing: EnumFacing? = null
-    private var lastRotation: Rotation? = null
-
-    private val rotationSettings = RotationSettings(this)
-        .withoutKeepRotation()
-        .withRequestPriority(RotationPriority.NORMAL)
+    private var stuckTicks = 0
+    private var lastPos: Vec3? = null
 
     override fun onDisable() {
         resetMining()
-        runCatching { RotationUtils.cancelTargetRotation(rotationSettings, immediate = true) }
+        mc.thePlayer?.let {
+            it.movementInput.moveForward = 0f
+            it.movementInput.moveStrafe = 0f
+        }
     }
 
     val onTick = handler<GameTickEvent> {
@@ -75,145 +74,179 @@ object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCEL
             return@handler
         }
 
-        if (onlyOnGround && !player.onGround) {
-            resetMining()
-            return@handler
-        }
-
-        val target = when (mode) {
-            "Legit" -> findLookingAt()
-            else -> findClosest()
-        }
-
-        if (target == null) {
-            resetMining()
-            return@handler
-        }
-
-        if (currentBlock != target.position) {
-            resetMining()
-            startMining(target.position, target.facing)
-        }
-
-        if (rotate) {
-            val rotation = rotationToBlock(target.position, target.facing)
-            if (rotation != null && rotation != lastRotation) {
-                RotationUtils.setTargetRotation(
-                    rotation = rotation,
-                    options = rotationSettings,
-                    ticks = 1
-                )
-                lastRotation = rotation
+        // Detecta se está preso
+        val currentPos = Vec3(player.posX, player.posY, player.posZ)
+        if (lastPos != null && currentPos.distanceTo(lastPos) < 0.05) {
+            stuckTicks++
+            if (stuckJump && stuckTicks > 40) {
+                player.jump()
+                stuckTicks = 0
             }
+        } else {
+            stuckTicks = 0
+        }
+        lastPos = currentPos
+
+        // Valida alvo atual ou procura um novo
+        val validTarget = target?.takeIf { world.getBlockState(it).block != Blocks.air }
+        if (validTarget == null || !isTargetOre(world.getBlockState(validTarget).block)) {
+            target = scanForOre(world, player)
         }
 
-        mineBlock(target.position, target.facing)
-    }
+        val t = target
+        if (t == null) {
+            // Nada pra minerar — para de andar
+            player.movementInput.moveForward = 0f
+            player.movementInput.moveStrafe = 0f
+            return@handler
+        }
 
-    private fun findLookingAt(): BlockTarget? {
-        val mop = mc.objectMouseOver ?: return null
-        if (mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) return null
-
-        val pos = mop.blockPos ?: return null
-        val state = mc.theWorld?.getBlockState(pos) ?: return null
-        if (!isValid(state)) return null
-
-        return BlockTarget(pos, mop.sideHit ?: EnumFacing.UP)
-    }
-
-    private fun findClosest(): BlockTarget? {
-        val player = mc.thePlayer ?: return null
-        val world = mc.theWorld ?: return null
         val eyes = player.eyes
+        val center = Vec3(t).addVector(0.5, 0.5, 0.5)
+        val dist = eyes.distanceTo(center).toFloat()
 
-        val r = range.toInt() + 1
-        val origin = BlockPos(player.posX, player.posY, player.posZ)
+        if (dist <= breakRange) {
+            // Está perto — para e minera
+            player.movementInput.moveForward = 0f
+            player.movementInput.moveStrafe = 0f
+            mineTarget(t, world, player)
+        } else {
+            // Está longe — anda até lá
+            resetMining()
+            walkTo(t, world, player)
+        }
+    }
 
-        var best: BlockTarget? = null
-        var bestDist = range
+    /** Procura o minério mais próximo no raio configurado. */
+    private fun scanForOre(world: World, player: EntityPlayerSP): BlockPos? {
+        val eyes = player.eyes
+        val ox = player.posX.toInt()
+        val oy = player.posY.toInt()
+        val oz = player.posZ.toInt()
 
-        for (x in -r..r) {
-            for (y in -r..r) {
-                for (z in -r..r) {
-                    val result = evaluateBlock(origin.add(x, y, z), eyes, bestDist) ?: continue
-                    bestDist = result.second
-                    best = result.first
+        var best: BlockPos? = null
+        var bestDist = Double.MAX_VALUE
+
+        for (x in -scanRange..scanRange) {
+            for (y in -scanRange..scanRange) {
+                for (z in -scanRange..scanRange) {
+                    val pos = BlockPos(ox + x, oy + y, oz + z)
+                    if (!isTargetOre(world.getBlockState(pos).block)) continue
+
+                    val center = Vec3(pos).addVector(0.5, 0.5, 0.5)
+                    val dist = eyes.distanceTo(center)
+                    if (dist < bestDist) {
+                        bestDist = dist
+                        best = pos
+                    }
                 }
             }
         }
         return best
     }
 
-    /** Retorna o par (bloco, distância) se for melhor que o atual, senão null. */
-    private fun evaluateBlock(pos: BlockPos, eyes: Vec3, bestDist: Float): Pair<BlockTarget, Float>? {
-        val world = mc.theWorld ?: return null
-        val state = world.getBlockState(pos) ?: return null
-        if (!isValid(state)) return null
-
+    /** Mina o bloco alvo: olha pra ele e quebra. */
+    private fun mineTarget(pos: BlockPos, world: World, player: EntityPlayerSP) {
+        val eyes = player.eyes
         val center = Vec3(pos).addVector(0.5, 0.5, 0.5)
-        val dist = eyes.distanceTo(center).toFloat()
-        if (dist > bestDist) return null
 
-        if (!throughWalls && !RotationUtils.isVisible(center)) return null
+        // Vira a câmera pro bloco (rotação real, não silent)
+        val rot = RotationUtils.toRotation(center, fromEntity = player)
+        player.rotationYaw = rot.yaw
+        player.rotationPitch = rot.pitch
 
         val facing = closestFacing(pos, eyes)
-        return BlockTarget(pos, facing) to dist
-    }
 
-    private fun startMining(pos: BlockPos, facing: EnumFacing) {
-        mc.netHandler.addToSendQueue(C07PacketPlayerDigging(START_DESTROY_BLOCK, pos, facing))
-        mc.playerController?.onPlayerDamageBlock(pos, facing)
-        currentBlock = pos
-        currentFacing = facing
-    }
+        if (miningBlock != pos) {
+            resetMining()
+            miningBlock = pos
+            miningFacing = facing
+            mc.netHandler.addToSendQueue(C07PacketPlayerDigging(START_DESTROY_BLOCK, pos, facing))
+        }
 
-    private fun mineBlock(pos: BlockPos, facing: EnumFacing) {
-        val controller = mc.playerController ?: return
-        if (controller.onPlayerDamageBlock(pos, facing)) {
+        if (mc.playerController?.onPlayerDamageBlock(pos, facing) == true) {
             mc.netHandler.addToSendQueue(C07PacketPlayerDigging(STOP_DESTROY_BLOCK, pos, facing))
-            currentBlock = null
-            currentFacing = null
-            lastRotation = null
+            miningBlock = null
+            miningFacing = null
+            target = null
         }
     }
 
-    private fun resetMining() {
-        val pos = currentBlock
-        val facing = currentFacing
-        if (pos != null && facing != null) {
+    /** Anda em direção ao alvo, quebrando obstáculos no caminho. */
+    private fun walkTo(target: BlockPos, world: World, player: EntityPlayerSP) {
+        val dx = (target.x + 0.5) - player.posX
+        val dz = (target.z + 0.5) - player.posZ
+        val yaw = Math.toDegrees(atan2(-dx, dz)).toFloat()
+        player.rotationYaw = yaw
+
+        if (breakInPath) {
+            val rad = Math.toRadians(yaw.toDouble())
+            val dirX = -sin(rad)
+            val dirZ = cos(rad)
+
+            // Checa blocos 1 e 2 na frente, pé e cabeça
+            for (forward in doubleArrayOf(1.0, 2.0)) {
+                for (yOff in 0..1) {
+                    val cx = player.posX + dirX * forward
+                    val cz = player.posZ + dirZ * forward
+                    val cy = player.posY + yOff
+                    val checkPos = BlockPos(cx, cy, cz)
+                    val block = world.getBlockState(checkPos).block
+
+                    if (isBreakable(block)) {
+                        breakObstacle(checkPos, player)
+                        return
+                    }
+                }
+            }
+        }
+
+        player.movementInput.moveForward = 1f
+        player.movementInput.moveStrafe = 0f
+    }
+
+    /** Quebra um bloco que está atrapalhando o caminho. */
+    private fun breakObstacle(pos: BlockPos, player: EntityPlayerSP) {
+        val eyes = player.eyes
+        val center = Vec3(pos).addVector(0.5, 0.5, 0.5)
+        val rot = RotationUtils.toRotation(center, fromEntity = player)
+        player.rotationYaw = rot.yaw
+        player.rotationPitch = rot.pitch
+
+        val facing = closestFacing(pos, eyes)
+
+        if (miningBlock != pos) {
+            resetMining()
+            miningBlock = pos
+            miningFacing = facing
+            mc.netHandler.addToSendQueue(C07PacketPlayerDigging(START_DESTROY_BLOCK, pos, facing))
+        }
+
+        if (mc.playerController?.onPlayerDamageBlock(pos, facing) == true) {
             mc.netHandler.addToSendQueue(C07PacketPlayerDigging(STOP_DESTROY_BLOCK, pos, facing))
+            miningBlock = null
+            miningFacing = null
         }
-        currentBlock = null
-        currentFacing = null
-        lastRotation = null
+
+        // Não anda enquanto quebra
+        player.movementInput.moveForward = 0f
+        player.movementInput.moveStrafe = 0f
     }
 
-    private fun isValid(state: IBlockState): Boolean {
-        val block = state.block ?: return false
-        return when (blacklist) {
-            "OnlyOres" -> isOre(block)
-            "None" -> !isUnbreakable(block)
-            else -> !isDefaultBlacklisted(block)
+    private fun isTargetOre(block: Block): Boolean {
+        return when (targetType) {
+            "Lapis" -> block == Blocks.lapis_ore
+            "Diamond" -> block == Blocks.diamond_ore
+            "Iron" -> block == Blocks.iron_ore
+            "Gold" -> block == Blocks.gold_ore
+            "Emerald" -> block == Blocks.emerald_ore
+            "Coal" -> block == Blocks.coal_ore
+            "Redstone" -> block == Blocks.redstone_ore || block == Blocks.lit_redstone_ore
+            else -> isAnyOre(block)
         }
     }
 
-    /** Blocos que nunca dão pra minerar de qualquer forma (ar, líquidos, bedrock). */
-    private fun isUnbreakable(block: Block): Boolean {
-        return block == Blocks.air
-            || block == Blocks.bedrock
-            || block.material?.isLiquid == true
-    }
-
-    private fun isDefaultBlacklisted(block: Block): Boolean {
-        return isUnbreakable(block)
-            || block == Blocks.chest
-            || block == Blocks.trapped_chest
-            || block == Blocks.ender_chest
-            || block == Blocks.portal
-            || block == Blocks.end_portal
-    }
-
-    private fun isOre(block: Block): Boolean {
+    private fun isAnyOre(block: Block): Boolean {
         return block == Blocks.coal_ore
             || block == Blocks.iron_ore
             || block == Blocks.gold_ore
@@ -225,12 +258,22 @@ object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCEL
             || block == Blocks.quartz_ore
     }
 
+    private fun isBreakable(block: Block): Boolean {
+        return block != Blocks.air
+            && block != Blocks.bedrock
+            && block != Blocks.water
+            && block != Blocks.flowing_water
+            && block != Blocks.lava
+            && block != Blocks.flowing_lava
+            && !isAnyOre(block) // não quebra minério no caminho
+    }
+
     private fun closestFacing(pos: BlockPos, eyes: Vec3): EnumFacing {
         val center = Vec3(pos).addVector(0.5, 0.5, 0.5)
         val diff = center.subtract(eyes)
-        val ax = kotlin.math.abs(diff.xCoord)
-        val ay = kotlin.math.abs(diff.yCoord)
-        val az = kotlin.math.abs(diff.zCoord)
+        val ax = abs(diff.xCoord)
+        val ay = abs(diff.yCoord)
+        val az = abs(diff.zCoord)
         return when {
             ax >= ay && ax >= az -> if (diff.xCoord > 0) EnumFacing.WEST else EnumFacing.EAST
             ay >= ax && ay >= az -> if (diff.yCoord > 0) EnumFacing.DOWN else EnumFacing.UP
@@ -238,17 +281,13 @@ object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCEL
         }
     }
 
-    private fun rotationToBlock(pos: BlockPos, facing: EnumFacing): Rotation? {
-        val player = mc.thePlayer ?: return null
-        val blockCenter = Vec3(pos).addVector(0.5, 0.5, 0.5)
-        val faceOffset = Vec3(
-            facing.directionVec.x * 0.5,
-            facing.directionVec.y * 0.5,
-            facing.directionVec.z * 0.5
-        )
-        val targetPoint = blockCenter.add(faceOffset)
-        return RotationUtils.toRotation(targetPoint, fromEntity = player)
+    private fun resetMining() {
+        val pos = miningBlock
+        val facing = miningFacing
+        if (pos != null && facing != null) {
+            mc.netHandler.addToSendQueue(C07PacketPlayerDigging(STOP_DESTROY_BLOCK, pos, facing))
+        }
+        miningBlock = null
+        miningFacing = null
     }
-
-    data class BlockTarget(val position: BlockPos, val facing: EnumFacing)
 }
