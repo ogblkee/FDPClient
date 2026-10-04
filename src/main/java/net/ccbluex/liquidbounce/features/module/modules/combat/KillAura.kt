@@ -29,8 +29,6 @@ import net.ccbluex.liquidbounce.utils.client.BlinkUtils
 import net.ccbluex.liquidbounce.utils.client.ClientUtils.runTimeTicks
 import net.ccbluex.liquidbounce.utils.client.PacketUtils.sendPacket
 import net.ccbluex.liquidbounce.utils.client.PacketUtils.sendPackets
-import net.ccbluex.liquidbounce.event.AttackEvent
-import net.ccbluex.liquidbounce.event.EventManager
 import net.ccbluex.liquidbounce.utils.extensions.*
 import net.ccbluex.liquidbounce.utils.entity.PositionExtrapolation
 import net.ccbluex.liquidbounce.utils.inventory.InventoryUtils.serverOpenInventory
@@ -998,11 +996,6 @@ object KillAura : Module("KillAura", Category.COMBAT, Category.SubCategory.COMBA
     val thePlayer = mc.thePlayer
 
     if (shouldPrioritize()) return
-
-    // >>> NOVO: Dispara o AttackEvent antes de qualquer coisa <<<
-    val attackEvent = AttackEvent(entity)
-    EventManager.call(attackEvent)
-    if (attackEvent.isCancelled) return
 
     if (thePlayer.isBlocking && (autoBlock == "Off" && blockStatus || autoBlock == "Packet" && releaseAutoBlock)) {
         stopBlocking()
