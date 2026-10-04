@@ -109,7 +109,7 @@ object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCEL
             // Está perto — para e minera
             player.movementInput.moveForward = 0f
             player.movementInput.moveStrafe = 0f
-            mineTarget(t, world, player)
+            mineTarget(t, player)
         } else {
             // Está longe — anda até lá
             resetMining()
@@ -146,7 +146,7 @@ object AutoMine : Module("AutoMine", Category.OTHER, Category.SubCategory.MISCEL
     }
 
     /** Mina o bloco alvo: olha pra ele e quebra. */
-    private fun mineTarget(pos: BlockPos, world: World, player: EntityPlayerSP) {
+    private fun mineTarget(pos: BlockPos, player: EntityPlayerSP) {
         val eyes = player.eyes
         val center = Vec3(pos).addVector(0.5, 0.5, 0.5)
 
