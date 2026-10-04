@@ -79,7 +79,7 @@ object FDPClient {
      *
      * This has all of the basic information.
      */
-    const val CLIENT_NAME = "blakeclient"
+    const val CLIENT_NAME = "FDPClient"
     const val CLIENT_DISPLAY_NAME = "BlakeClient"
     const val CLIENT_AUTHOR = "Blake"
     const val CLIENT_CLOUD = "https://cloud.liquidbounce.net/LiquidBounce"
@@ -99,7 +99,7 @@ object FDPClient {
     const val IN_DEV = true
 
     val clientTitle = buildString(32) {
-        append(CLIENT_NAME)
+        append(CLIENT_DISPLAY_NAME)
         append(' ')
         append(clientVersionText)
         append(' ')
